@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>知光搜索接口游标分页分析</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    color: #1f2328;
+    line-height: 1.65;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 24px 32px;
+    font-size: 14px;
+  }
+  h1 {
+    font-size: 24px;
+    border-bottom: 2px solid #1f2328;
+    padding-bottom: 8px;
+    margin-top: 0;
+  }
+  h2 {
+    font-size: 18px;
+    margin-top: 28px;
+    padding-left: 10px;
+    border-left: 4px solid #2563eb;
+  }
+  h3 {
+    font-size: 15px;
+    margin-top: 18px;
+    color: #1f2328;
+  }
+  p, li { font-size: 14px; }
+  code {
+    background: #f3f4f6;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+    font-size: 12.5px;
+    color: #b91c1c;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 14px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.55;
+    font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+  }
+  pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font-size: 12.5px;
+  }
+  .meta {
+    color: #6b7280;
+    font-size: 12px;
+    margin-bottom: 24px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  th, td {
+    border: 1px solid #d1d5db;
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #f3f4f6;
+    font-weight: 600;
+  }
+  .callout {
+    background: #eff6ff;
+    border-left: 4px solid #2563eb;
+    padding: 10px 14px;
+    margin: 14px 0;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .callout.warn {
+    background: #fef3c7;
+    border-left-color: #d97706;
+  }
+  ul { padding-left: 22px; }
+  li { margin: 4px 0; }
+  .file-ref {
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: 12.5px;
+    color: #2563eb;
+  }
+</style>
+</head>
+<body>
+
+<h1>知光搜索接口游标分页分析</h1>
+
+<p class="meta">后端技术调研 · 范围：SearchController / SearchServiceImpl · 生成于 2026-09-09</p>
+
+<h2>一、整体方案</h2>
+
+<ul>
+  <li><strong>存储引擎</strong>：Elasticsearch（索引名 <code>zhiguang_content_index</code>），不是 MySQL LIKE。</li>
+  <li><strong>分页方式</strong>：ES 的 <code>search_after</code>，<strong>不是</strong> <code>from/size</code>，也<strong>不是</strong> <code>scroll</code> API。</li>
+  <li><strong>游标形态</strong>：5 字段 sort 数组 → 逗号拼接 → <strong>Base64URL 无填充</strong>编码，整体作为一个字符串塞进 query string 的 <code>after</code> 参数。</li>
+</ul>
+
+<div class="callout">
+  这是 ES 官方推荐的无状态分页方式。比 <code>scroll</code> 轻量（scroll 要在协调节点维护 context，1.5 分钟过期还得显式清理），比 <code>from/size</code> 不会越翻越慢。
+</div>
+
+<h2>二、5 字段复合排序（切片规则）</h2>
+
+<p>搜索结果按以下 5 个字段依次排序，<code>content_id</code> 作为最后一级 tie-breaker，保证同 score / 同时间时顺序完全确定，避免跳页或重复：</p>
+
+<table>
+  <thead>
+    <tr><th>顺序</th><th>字段</th><th>方向</th><th>作用</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td><code>score</code>（_score，相关度）</td><td>desc</td><td>主排序：和关键词的匹配分</td></tr>
+    <tr><td>2</td><td><code>publish_time</code></td><td>desc</td><td>相关度相同时，更新的内容靠前</td></tr>
+    <tr><td>3</td><td><code>like_count</code></td><td>desc</td><td>进一步 tie-break：热度</td></tr>
+    <tr><td>4</td><td><code>view_count</code></td><td>desc</td><td>进一步 tie-break：曝光</td></tr>
+    <tr><td>5</td><td><code>content_id</code></td><td>desc</td><td>最终唯一排序键，杜绝同分重复</td></tr>
+  </tbody>
+</table>
+
+<p>对应实现：<span class="file-ref">SearchServiceImpl.java:54-59</span></p>
+
+<pre><code>sorts.add(SortOptions.of(s -&gt; s.score(o -&gt; o.order(SortOrder.Desc))));
+sorts.add(SortOptions.of(s -&gt; s.field(f -&gt; f.field("publish_time").order(SortOrder.Desc))));
+sorts.add(SortOptions.of(s -&gt; s.field(f -&gt; f.field("like_count").order(SortOrder.Desc))));
+sorts.add(SortOptions.of(s -&gt; s.field(f -&gt; f.field("view_count").order(SortOrder.Desc))));
+sorts.add(SortOptions.of(s -&gt; s.field(f -&gt; f.field("content_id").order(SortOrder.Desc))));</code></pre>
+
+<h2>三、游标编码（服务端 → 客户端）</h2>
+
+<p>每次搜索后，服务端从命中的最后一条记录里取出它的 <code>sort</code> 数组，按固定顺序拼成字符串，再 Base64URL 编码：</p>
+
+<p><span class="file-ref">SearchServiceImpl.java:153-154</span></p>
+
+<pre><code>List&lt;String&gt; parts = sv.stream().map(this::fieldValueToString).collect(Collectors.toList());
+nextAfter = Base64.getUrlEncoder().withoutPadding()
+                  .encodeToString(String.join(",", parts).getBytes());</code></pre>
+
+<p>Base64URL（而不是标准 Base64）的目的是：结果可以直接放在 URL query string 里，不用再处理 <code>+</code>/<code>/</code>/<code>=</code> 的转义。<code>withoutPadding</code> 让长度更可控。</p>
+
+<p>真实样例（解码后）：</p>
+
+<pre><code>0.97654321,1725846400000,123,456,789
+└─score─┘ └─publish_time─┘ └li└v└id┘
+                              ke  ie
+                              _   w
+                              co  _
+                              un  co
+                              t    un
+                                   t
+                                   _i
+                                   d</code></pre>
+
+<p>编码后传给前端：</p>
+
+<pre><code>after = "MC45NzY1NDMyMSwxNzI1ODQ2NDAwMDAwLDEyMyw0NTYsNzg5"</code></pre>
+
+<h2>四、游标解码（客户端 → 服务端）</h2>
+
+<p>客户端下次请求把 <code>after</code> 原样回传，服务端按位置硬解析回 ES 的 <code>FieldValue[]</code>：</p>
+
+<p><span class="file-ref">SearchServiceImpl.java:220-244</span></p>
+
+<pre><code>String decoded = new String(Base64.getUrlDecoder().decode(after));
+String[] parts = decoded.split(",");
+// i=0 → Double（score）
+// i=1 → Long（publish_time）
+// i=2..4 → Long（like_count / view_count / content_id）</code></pre>
+
+<p>解析出的 <code>FieldValue</code> 数组直接塞进下一次 ES 查询的 <code>searchAfter</code> 字段，ES 就能从"上一页最后一条之后"继续取。</p>
+
+<h2>五、接口契约</h2>
+
+<h3>请求</h3>
+
+<p><span class="file-ref">SearchController.java:39-47</span></p>
+
+<pre><code>GET /api/search
+  ?q=关键词
+  &amp;size=20
+  &amp;tags=标签1,标签2
+  &amp;after=Base64URL游标</code></pre>
+
+<h3>响应</h3>
+
+<p><span class="file-ref">SearchResponse.java:9-12</span></p>
+
+<pre><code>record SearchResponse(
+    List&lt;FeedItemResponse&gt; items,
+    String nextAfter,   // 下一页游标；null 表示到底了
+    boolean hasMore
+)</code></pre>
+
+<p>前端对 <code>nextAfter</code> 的处理：拿不到就停，不再请求。</p>
+
+<p><span class="file-ref">SearchPage.tsx:128</span></p>
+
+<pre><code>const resp = await searchService.query({ q, size, tags, after });
+setItems(prev =&gt; [...prev, ...(resp.items ?? [])]);
+setAfter(resp.nextAfter ?? null);</code></pre>
+
+<h2>六、设计取舍</h2>
+
+<ul>
+  <li><strong>用 Base64URL 而不是 JSON</strong>：因为字段类型和顺序都是固定的，按位置拆最简单；URL safe 是为了让游标能直接挂在 URL 上。</li>
+  <li><strong>没抽 CursorUtil 工具类</strong>：编解码逻辑直接写在 <code>SearchServiceImpl</code> 里。可以理解为"专用，不通用"——目前搜索是唯一用 ES 的地方，没必要过早抽象。</li>
+  <li><strong>不暴露 sort 内容</strong>：前端只透传 <code>after</code> 字符串，不知道里面是什么。游标是 opaque token，这是对的。</li>
+  <li><strong>5 字段而非 2 字段</strong>：多 3 个 tie-breaker 看似冗余，但 ES 的 <code>search_after</code> 要求 sort 严格全局有序，差一个 tie-breaker 就可能出现"上一页最后一条同时也是下一页第一条"或跳页。</li>
+</ul>
+
+<div class="callout warn">
+  <strong>潜在风险</strong>：<br>
+  1. 排序规则一旦改了（比如新增 <code>comment_count</code>），所有正在使用的 <code>after</code> 游标全部失效——需要兼容期或在解码失败时 fallback 到首页。<br>
+  2. <code>after</code> 没设过期时间。理论上可以无限续翻。ES 这边没问题（无状态），但客户端如果缓存了旧的 <code>after</code>，可能在结果集已经大变的索引上产生乱序。当前未发现这类问题。
+</div>
+
+<h2>七、关键文件清单</h2>
+
+<table>
+  <thead>
+    <tr><th>文件</th><th>作用</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><span class="file-ref">SearchServiceImpl.java:48-159</span></td><td>搜索主流程 + 游标生成</td></tr>
+    <tr><td><span class="file-ref">SearchServiceImpl.java:220-244</span></td><td>游标解析回 FieldValue[]</td></tr>
+    <tr><td><span class="file-ref">SearchController.java:39-47</span></td><td>REST 入口</td></tr>
+    <tr><td><span class="file-ref">SearchResponse.java</span></td><td>响应 DTO</td></tr>
+    <tr><td><span class="file-ref">SearchPage.tsx:128</span></td><td>前端调用与翻页</td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>

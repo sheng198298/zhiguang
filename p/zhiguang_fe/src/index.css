@@ -1,0 +1,132 @@
+:root {
+  color-scheme: only light;
+  font-family: "PingFang SC", "HarmonyOS", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  --color-primary: #2f6fed;
+  --color-primary-strong: #1f5bd8;
+  --color-secondary: #dbe6ff;
+  --color-accent: #6ea8fe;
+  --color-success: #12c07b;
+  --color-info: #4b85f1;
+  --color-text-strong: #1f1f33;
+  --color-text: #3a3a4a;
+  --color-text-muted: #76768a;
+  --color-border: rgba(59, 106, 214, 0.25);
+  --color-bg: #f5f8ff;
+  --color-surface: #ffffff;
+  --color-surface-soft: #e8eeff;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 28px;
+  --shadow-soft: 0 12px 32px rgba(47, 111, 237, 0.15);
+  --shadow-card: 0 16px 40px rgba(26, 26, 44, 0.08);
+  --sidebar-width: 96px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+  background: radial-gradient(circle at top right, rgba(110, 168, 254, 0.2), transparent 45%),
+    linear-gradient(180deg, #f7faff 0%, #e9efff 100%);
+}
+
+body {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  background-attachment: fixed;
+}
+
+#root {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+
+p {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell {
+  width: min(1400px, 100%);
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  gap: 24px;
+  padding: 24px 32px 32px;
+}
+
+.ghost-button {
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(47, 111, 237, 0.32);
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--color-primary-strong);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ghost-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(47, 111, 237, 0.18);
+}
+
+@media (max-width: 1200px) {
+  :root {
+    --sidebar-width: 88px;
+  }
+
+  .app-shell {
+    padding: 16px 20px 24px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .app-shell {
+    grid-template-columns: 72px 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+}

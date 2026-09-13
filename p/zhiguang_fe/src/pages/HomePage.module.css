@@ -1,0 +1,94 @@
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  padding: 4px;
+  width: fit-content;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 14px;
+}
+
+.tab {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tabActive {
+  background: linear-gradient(135deg, #6ea8fe 0%, #2f6fed 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(47, 111, 237, 0.3);
+}
+
+.error {
+  color: var(--color-danger, #e5484d);
+  font-size: 13px;
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+.sourceHint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+.heroRow {
+  margin-bottom: 24px;
+}
+
+.masonry {
+  column-count: 4;
+  column-gap: 24px;
+}
+
+.masonryItem {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  margin-bottom: 24px;
+  /* 保持卡片宽度由列宽决定，不额外增加内边距 */
+}
+
+.heroCard {
+  /* 作为顶部大卡展示，宽度占可用区域 */
+  width: 100%;
+}
+
+@media (max-width: 1200px) {
+  .masonry {
+    column-count: 3;
+  }
+}
+
+@media (max-width: 1000px) {
+  .masonry {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 700px) {
+  .masonry {
+    column-count: 1;
+  }
+}
+
+/* 首页单列纵向列表（CSDN 搜索结果风格） */
+.feedList {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.feedListHint {
+  padding: 24px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
